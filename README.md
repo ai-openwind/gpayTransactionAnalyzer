@@ -89,5 +89,5 @@ The app listens on port `8080` by default.
 
 ## License
 
-This repository does not include a license file.
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0-or-later). See `LICENSE` for details.
 
