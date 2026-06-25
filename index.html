@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPay Transaction Extractor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #1A73E8;
+      --blue-light: #E8F0FE;
+      --blue-dark: #1557B0;
+      --red: #CC0000;
+      --red-light: #FFF0F0;
+      --green: #007700;
+      --green-light: #F0FFF0;
+      --gray-50: #F8F9FA;
+      --gray-100: #F1F3F4;
+      --gray-200: #E8EAED;
+      --gray-400: #BDC1C6;
+      --gray-600: #80868B;
+      --gray-800: #3C4043;
+      --gray-900: #202124;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+    }
+
+    body {
+      font-family: 'Google Sans', 'Segoe UI', sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      min-height: 100vh;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 24px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      width: 36px; height: 36px;
+      background: var(--blue);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: var(--gray-900); }
+    header p  { font-size: 13px; color: var(--gray-600); margin-top: 1px; }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .upload-card {
+      background: #fff;
+      border: 2px dashed var(--gray-400);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .upload-card:hover, .upload-card.dragover {
+      border-color: var(--blue);
+      background: var(--blue-light);
+    }
+    .upload-icon {
+      width: 56px; height: 56px;
+      background: var(--blue-light);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .upload-icon svg { width: 28px; height: 28px; fill: var(--blue); }
+    .upload-card h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .upload-card p  { font-size: 14px; color: var(--gray-600); }
+    .upload-card p span { color: var(--blue); font-weight: 500; }
+    #file-input { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background .15s, box-shadow .15s;
+    }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-outline {
+      background: #fff; color: var(--blue);
+      border: 1.5px solid var(--blue);
+    }
+    .btn-outline:hover { background: var(--blue-light); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 48px;
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--gray-200);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      display: none;
+      background: #FFF0F0;
+      border: 1px solid #FFCDD2;
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      color: var(--red);
+      font-size: 14px;
+    }
+
+    #results { display: none; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .summary-card {
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .summary-card .label {
+      font-size: 12px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: .5px;
+      color: var(--gray-600); margin-bottom: 8px;
+    }
+    .summary-card .value { font-size: 24px; font-weight: 700; }
+    .summary-card .sub   { font-size: 12px; color: var(--gray-600); margin-top: 4px; }
+    .card-total    .value { color: var(--blue); }
+    .card-sent     .value { color: var(--red); }
+    .card-received .value { color: var(--green); }
+    .card-net      .value { color: var(--gray-900); }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .toolbar h3 { font-size: 16px; font-weight: 600; flex: 1; }
+
+    .search-wrap { position: relative; }
+    .search-wrap svg {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      width: 16px; height: 16px; fill: var(--gray-600);
+    }
+    .search-wrap input {
+      padding: 8px 12px 8px 34px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 14px; width: 220px;
+      outline: none; transition: border-color .15s;
+    }
+    .search-wrap input:focus { border-color: var(--blue); }
+
+    select.filter-select {
+      padding: 8px 12px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 14px; outline: none; cursor: pointer;
+      background: #fff; color: var(--gray-900);
+      transition: border-color .15s;
+    }
+    select.filter-select:focus { border-color: var(--blue); }
+
+    .table-card {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .table-wrap { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th {
+      background: var(--gray-50);
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .4px;
+      color: var(--gray-600); white-space: nowrap;
+      cursor: pointer; user-select: none;
+      border-bottom: 1px solid var(--gray-200);
+    }
+    thead th:hover { color: var(--blue); }
+    thead th .sort-arrow { margin-left: 4px; opacity: .4; }
+    thead th.sort-asc  .sort-arrow { opacity: 1; }
+    thead th.sort-desc .sort-arrow { opacity: 1; transform: rotate(180deg); display: inline-block; }
+
+    tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr.sent     { background: #FFFAFA; }
+    tbody tr.received { background: #F6FFF6; }
+    tbody tr:hover { filter: brightness(.97); }
+
+    td { padding: 12px 16px; vertical-align: middle; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+    }
+    .badge-sent     { background: #FFE0E0; color: var(--red); }
+    .badge-received { background: #D9F7D9; color: var(--green); }
+    .badge-other    { background: var(--gray-100); color: var(--gray-800); }
+
+    .amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .amount-sent     { color: var(--red); }
+    .amount-received { color: var(--green); }
+
+    .upi-id  { font-size: 12px; color: var(--gray-600); font-family: monospace; }
+    .account { font-size: 12px; color: var(--gray-600); }
+
+    .empty-state { text-align: center; padding: 40px; color: var(--gray-600); }
+
+    .table-footer {
+      padding: 12px 16px; font-size: 13px;
+      color: var(--gray-600); border-top: 1px solid var(--gray-200);
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+    }
+    .footer-stat { display: flex; align-items: center; gap: 5px; }
+    .footer-stat .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .footer-stat .dot-sent     { background: var(--red); }
+    .footer-stat .dot-received { background: var(--green); }
+    .footer-stat .dot-net      { background: var(--blue); }
+    .footer-stat strong { font-weight: 600; }
+    .footer-count { margin-right: auto; }
+
+    .date-range { display: flex; align-items: center; gap: 6px; }
+    .date-range label { font-size: 12px; color: var(--gray-600); font-weight: 500; white-space: nowrap; }
+    .date-range input[type="date"] {
+      padding: 7px 10px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 13px; outline: none;
+      color: var(--gray-900); background: #fff;
+      cursor: pointer; transition: border-color .15s;
+    }
+    .date-range input[type="date"]:focus { border-color: var(--blue); }
+
+    #reset-btn { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">GP</div>
+  <div>
+    <h1>GPay Transaction Extractor</h1>
+    <p>Upload your Google Pay PDF statement to analyse transactions</p>
+  </div>
+</header>
+
+<main>
+  <div id="upload-section">
+    <div class="upload-card" id="drop-zone">
+      <div class="upload-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+      </div>
+      <h2>Drop your GPay PDF here</h2>
+      <p style="margin-bottom:20px;"><span>Click to browse</span> or drag and drop</p>
+      <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+        Choose PDF
+      </button>
+      <input type="file" id="file-input" accept=".pdf" />
+    </div>
+  </div>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p style="color:var(--gray-600);font-size:14px;">Extracting transactions…</p>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <div id="results">
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <div class="toolbar">
+      <h3>Transactions <span id="count-label" style="font-weight:400;color:var(--gray-600);"></span></h3>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><path d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        <input type="text" id="search" placeholder="Search counterparty…" oninput="render()" />
+      </div>
+      <select class="filter-select" id="type-filter" onchange="render()">
+        <option value="">All types</option>
+        <option value="Sent">Sent</option>
+        <option value="Received">Received</option>
+        <option value="Other">Other</option>
+      </select>
+      <div class="date-range">
+        <label for="date-from">From</label>
+        <input type="date" id="date-from" onchange="render()" />
+        <label for="date-to">To</label>
+        <input type="date" id="date-to" onchange="render()" />
+      </div>
+      <button class="btn btn-outline" id="download-btn" onclick="downloadExcel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        Download Excel
+      </button>
+      <button class="btn btn-outline" id="reset-btn" onclick="resetApp()">New PDF</button>
+    </div>
+
+    <div class="table-card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr id="thead-row"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer" id="table-footer"></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let allTransactions = [];
+  let sortCol = 'date';
+  let sortDir = 1;
+
+  const columns = [
+    { key: 'date',               label: 'Date',         sortable: true  },
+    { key: 'time',               label: 'Time',         sortable: true  },
+    { key: 'type',               label: 'Type',         sortable: true  },
+    { key: 'counterparty',       label: 'Counterparty', sortable: true  },
+    { key: 'amount',             label: 'Amount (₹)',   sortable: true  },
+    { key: 'upi_transaction_id', label: 'UPI Txn ID',   sortable: false },
+    { key: 'account',            label: 'Account',      sortable: false },
+  ];
+
+  const dropZone = document.getElementById('drop-zone');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0]; if (f) handleFile(f);
+  });
+  document.getElementById('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  function show(id)  { document.getElementById(id).style.display = 'flex';  }
+  function hide(id)  { document.getElementById(id).style.display = 'none';  }
+  function block(id) { document.getElementById(id).style.display = 'block'; }
+
+  async function handleFile(file) {
+    if (!file.name.endsWith('.pdf')) { showError('Please upload a PDF file.'); return; }
+    hide('upload-section'); hide('error-msg'); hide('results'); show('loading');
+    try {
+      const buf = await file.arrayBuffer();
+      const txns = await extractFromPdf(buf);
+      if (!txns.length) throw new Error('No transactions found in the PDF');
+      allTransactions = txns;
+      hide('loading');
+      showResults();
+    } catch (err) {
+      hide('loading'); block('upload-section'); showError(err.message);
+    }
+  }
+
+  // ── pdf.js extraction ──
+
+  function joinLineItems(items) {
+    items.sort((a, b) => a.transform[4] - b.transform[4]);
+    let result = '';
+    for (let i = 0; i < items.length; i++) {
+      if (i === 0) { result = items[i].str; continue; }
+      const prev = items[i - 1], curr = items[i];
+      const gap = curr.transform[4] - (prev.transform[4] + (prev.width || 0));
+      const charW = (prev.width || 0) / Math.max(prev.str.length, 1) || 5;
+      if (gap > charW * 0.3) result += ' ';
+      result += curr.str;
+    }
+    return result.trim();
+  }
+
+  function textContentToLines(textContent) {
+    const items = textContent.items.filter(it => it.str.trim());
+    if (!items.length) return [];
+    items.sort((a, b) => {
+      const dy = b.transform[5] - a.transform[5];
+      return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4];
+    });
+    const groups = [[items[0]]];
+    for (let i = 1; i < items.length; i++) {
+      const dy = Math.abs(items[i].transform[5] - groups[groups.length - 1][0].transform[5]);
+      if (dy > 3) groups.push([items[i]]);
+      else groups[groups.length - 1].push(items[i]);
+    }
+    return groups.map(joinLineItems).filter(Boolean);
+  }
+
+  async function extractFromPdf(arrayBuffer) {
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const allLines = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      allLines.push(...textContentToLines(content));
+    }
+    return parseTransactions(allLines);
+  }
+
+  // ── Transaction parsing (ported from Python) ──
+
+  function parseAmount(s) {
+    return parseFloat(s.replace('₹', '').replace(/,/g, ''));
+  }
+
+  function parseTransactions(lines) {
+    const TXN  = /^(\d{2}[A-Za-z]{3},\d{4})\s+(.+?)\s+(₹[\d,]+(?:\.\d{2})?)$/;
+    const TIME = /^(\d{2}:\d{2}[AP]M)\s+UPITransactionID:(\d+)$/;
+    const ACCT = /^(Paidby|Paidto)StateBankofIndia/;
+    const txns = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const m = TXN.exec(lines[i]);
+      if (m) {
+        const [, dateStr, details, amtStr] = m;
+        let type, counterparty;
+        if      (details.startsWith('Paidto'))      { type = 'Sent';     counterparty = details.slice(6);  }
+        else if (details.startsWith('Receivedfrom')) { type = 'Received'; counterparty = details.slice(12); }
+        else                                          { type = 'Other';    counterparty = details;           }
+
+        let time = '', upiId = '', account = '';
+
+        if (i + 1 < lines.length) {
+          const tm = TIME.exec(lines[i + 1]);
+          if (tm) { time = tm[1]; upiId = tm[2]; i++; }
+        }
+        if (i + 1 < lines.length && ACCT.test(lines[i + 1])) {
+          account = lines[i + 1]; i++;
+        }
+
+        const dm = /^(\d{2})([A-Za-z]{3}),(\d{4})$/.exec(dateStr);
+        const date = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : dateStr;
+
+        txns.push({ date, time, type, counterparty,
+                    amount: parseAmount(amtStr), upi_transaction_id: upiId, account });
+      }
+      i++;
+    }
+    return txns;
+  }
+
+  // ── UI ──
+
+  function updateSummary(rows) {
+    const sent = rows.filter(t => t.type === 'Sent').reduce((a, t) => a + t.amount, 0);
+    const recv = rows.filter(t => t.type === 'Received').reduce((a, t) => a + t.amount, 0);
+    const net  = recv - sent;
+    document.getElementById('summary-grid').innerHTML =
+      card('Total Transactions', rows.length, '', 'card-total') +
+      card('Total Sent',     fmt(sent), 'outflows',                        'card-sent') +
+      card('Total Received', fmt(recv), 'inflows',                         'card-received') +
+      card('Net', (net >= 0 ? '+' : '') + fmt(net), net >= 0 ? 'surplus' : 'deficit', 'card-net');
+  }
+
+  function showResults() {
+    document.getElementById('thead-row').innerHTML = columns.map(c => `
+      <th data-key="${c.key}" class="${sortCol === c.key ? (sortDir === 1 ? 'sort-asc' : 'sort-desc') : ''}"
+          ${c.sortable ? `onclick="setSort('${c.key}')"` : ''}>
+        ${c.label}${c.sortable ? ' <span class="sort-arrow">▲</span>' : ''}
+      </th>`).join('');
+
+    document.getElementById('reset-btn').style.display = 'inline-flex';
+    block('results');
+    render();
+  }
+
+  function card(label, value, sub, cls) {
+    return `<div class="summary-card ${cls}">
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+      ${sub ? `<div class="sub">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  function fmt(n) {
+    return '₹' + Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function setSort(key) {
+    sortDir = (sortCol === key) ? sortDir * -1 : 1;
+    sortCol = key;
+    document.querySelectorAll('thead th').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.key === sortCol) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    });
+    render();
+  }
+
+  const MONTHS = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  function txnDate(dateStr) {
+    const m = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(dateStr);
+    return m ? new Date(+m[3], MONTHS[m[2]], +m[1]) : null;
+  }
+
+  function render() {
+    const q     = document.getElementById('search').value.toLowerCase();
+    const typeF = document.getElementById('type-filter').value;
+    const from  = document.getElementById('date-from').value;
+    const to    = document.getElementById('date-to').value;
+    const fromD = from ? new Date(from) : null;
+    const toD   = to   ? new Date(to)   : null;
+
+    let rows = allTransactions.filter(t => {
+      if (q && !t.counterparty.toLowerCase().includes(q) && !t.upi_transaction_id.includes(q)) return false;
+      if (typeF && t.type !== typeF) return false;
+      if (fromD || toD) {
+        const d = txnDate(t.date);
+        if (d) {
+          if (fromD && d < fromD) return false;
+          if (toD   && d > toD)   return false;
+        }
+      }
+      return true;
+    });
+
+    rows.sort((a, b) => {
+      const av = a[sortCol], bv = b[sortCol];
+      return (sortCol === 'amount' ? av - bv : String(av).localeCompare(String(bv))) * sortDir;
+    });
+
+    document.getElementById('tbody').innerHTML = rows.length === 0
+      ? `<tr><td colspan="${columns.length}" class="empty-state">No transactions match your filters.</td></tr>`
+      : rows.map(t => `
+          <tr class="${t.type === 'Sent' ? 'sent' : t.type === 'Received' ? 'received' : ''}">
+            <td>${t.date}</td>
+            <td>${t.time || '—'}</td>
+            <td><span class="badge badge-${t.type.toLowerCase()}">${t.type}</span></td>
+            <td>${esc(t.counterparty)}</td>
+            <td class="amount amount-${t.type.toLowerCase()}">${t.type === 'Sent' ? '−' : '+'}${fmt(t.amount)}</td>
+            <td class="upi-id">${t.upi_transaction_id || '—'}</td>
+            <td class="account">${esc(t.account) || '—'}</td>
+          </tr>`).join('');
+
+    updateSummary(rows);
+
+    const sent = rows.filter(t => t.type === 'Sent').reduce((a, t) => a + t.amount, 0);
+    const recv = rows.filter(t => t.type === 'Received').reduce((a, t) => a + t.amount, 0);
+    const net  = recv - sent;
+
+    document.getElementById('count-label').textContent = `(${rows.length} of ${allTransactions.length})`;
+    document.getElementById('table-footer').innerHTML = `
+      <span class="footer-count">${rows.length} transaction${rows.length !== 1 ? 's' : ''}</span>
+      <span class="footer-stat"><span class="dot dot-sent"></span>Sent <strong>${fmt(sent)}</strong></span>
+      <span class="footer-stat"><span class="dot dot-received"></span>Received <strong>${fmt(recv)}</strong></span>
+      <span class="footer-stat"><span class="dot dot-net"></span>Net <strong style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${net >= 0 ? '+' : ''}${fmt(net)}</strong></span>
+    `;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+  }
+
+  // ── Excel download (SheetJS) ──
+
+  function downloadExcel() {
+    if (!allTransactions.length) return;
+    const headers = ['Date','Time','Type','Counterparty','Amount (₹)','UPI Transaction ID','Account'];
+    const data = [headers, ...allTransactions.map(t =>
+      [t.date, t.time, t.type, t.counterparty, t.amount, t.upi_transaction_id, t.account]
+    )];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{wch:13},{wch:10},{wch:10},{wch:35},{wch:14},{wch:22},{wch:30}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+    XLSX.writeFile(wb, 'gpay_transactions.xlsx');
+  }
+
+  function resetApp() {
+    allTransactions = [];
+    document.getElementById('file-input').value = '';
+    document.getElementById('search').value = '';
+    document.getElementById('type-filter').value = '';
+    document.getElementById('date-from').value = '';
+    document.getElementById('date-to').value = '';
+    hide('results'); hide('error-msg'); block('upload-section');
+    document.getElementById('reset-btn').style.display = 'none';
+  }
+</script>
+</body>
+</html>

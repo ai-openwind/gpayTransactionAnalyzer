@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "gpay-extractor",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}
